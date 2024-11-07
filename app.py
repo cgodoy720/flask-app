@@ -5,6 +5,8 @@ import sys
 import random
 import os
 import psutil
+
+# Get the process memory usage
 process = psutil.Process(os.getpid())
 print(f"Memory usage: {process.memory_info().rss / 1024 ** 2} MB")
 
@@ -21,14 +23,6 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model.to(device)
 
 app = Flask(__name__)
-
-try:
-    from transformers import AutoModelForCausalLM, AutoTokenizer
-    import torch
-    import pandas as pd
-except ImportError as e:
-    print(f"Import error: {e}")
-
 
 fatherhood_responses = {
     "advice": [
@@ -155,6 +149,24 @@ conversation = {
 
 }
 
+# Implement memory clearing
+def clear_memory():
+    torch.cuda.empty_cache()
+
+# Model inference
+def generate_response(input_text):
+    new_user_input_ids = tokenizer.encode(input_text + tokenizer.eos_token, return_tensors='pt').to(device)
+    
+    # Optionally use mixed precision if on GPU
+    with torch.cuda.amp.autocast(enabled=True):
+        try:
+            chat_history_ids = model.generate(new_user_input_ids, max_length=150, pad_token_id=tokenizer.eos_token_id)
+            response = tokenizer.decode(chat_history_ids[:, new_user_input_ids.shape[-1]:][0], skip_special_tokens=True)
+        except Exception as e:
+            response = "Sorry, something went wrong."
+
+    clear_memory()  # Clear GPU memory after inference
+    return response
 
 @app.route("/")
 def index():
@@ -165,7 +177,6 @@ def chat():
     data = request.get_json()  
     msg = data.get("msg")  
 
-    
     if not msg:
         return jsonify({"error": "No 'msg' field provided in the request."}), 400
 
@@ -195,18 +206,7 @@ def get_chat_response(text):
         return selected_response
     
     # If no keyword matches, use the AI model to generate a response
-    new_user_input_ids = tokenizer.encode(str(text) + tokenizer.eos_token, return_tensors='pt')
-    attention_mask = torch.ones(new_user_input_ids.shape, dtype=torch.long).to(device)
-
-    new_user_input_ids = new_user_input_ids.to(device)
-    
-    try:
-        chat_history_ids = model.generate(new_user_input_ids, attention_mask=attention_mask, max_length=150, pad_token_id=tokenizer.eos_token_id)
-    except Exception as e:
-        print(f"Error during model generation: {e}")
-        return "Sorry, something went wrong."
-
-    return tokenizer.decode(chat_history_ids[:, new_user_input_ids.shape[-1]:][0], skip_special_tokens=True)
+    return generate_response(text)
 
 
 if __name__ == "__main__":
