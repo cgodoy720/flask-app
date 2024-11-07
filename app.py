@@ -4,6 +4,9 @@ import torch
 import sys
 import random
 import os
+import psutil
+process = psutil.Process(os.getpid())
+print(f"Memory usage: {process.memory_info().rss / 1024 ** 2} MB")
 
 # Check Python version
 print(sys.executable)  # Should show the path within the 'venv' directory

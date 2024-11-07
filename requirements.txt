@@ -3,6 +3,7 @@ transformers
 python-dotenv
 pandas
 datasets
+psutil
 torch==2.5.1
 sympy==1.13.1
 mpmath==1.3.0
