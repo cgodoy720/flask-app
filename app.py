@@ -76,7 +76,7 @@ def chat():
     if not msg:
         return jsonify({"error": "No 'msg' field provided in the request."}), 400
 
-    print(f"Received message: {msg}")  # For debugging
+    print(f"Received message: {msg}")  
     token_count = len(tokenizer.encode(msg))
 
     response = get_chat_response(msg)
