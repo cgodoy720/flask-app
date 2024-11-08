@@ -1,0 +1,5 @@
+services:
+  - type: web
+    name: Patternal-flask_app
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app

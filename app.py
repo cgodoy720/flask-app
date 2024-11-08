@@ -60,10 +60,6 @@ def clear_memory():
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
 
-@app.before_first_request
-def setup():
-    load_model()
-
 @app.route("/")
 def index():
     return jsonify({"message": "Welcome to the API!"}), 200
@@ -76,7 +72,7 @@ def chat():
     if not msg:
         return jsonify({"error": "No 'msg' field provided in the request."}), 400
 
-    print(f"Received message: {msg}")  
+    print(f"Received message: {msg}")  # For debugging
     token_count = len(tokenizer.encode(msg))
 
     response = get_chat_response(msg)
@@ -108,6 +104,9 @@ def get_chat_response(text):
         return response
 
 if __name__ == "__main__":
+    # Load the model before starting the app
+    load_model()
+
     # Get the port from environment variable or default to 5000
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
