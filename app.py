@@ -1,4 +1,5 @@
 from flask import Flask, request, jsonify
+from flask_cors import CORS  # Import CORS
 from transformers import AutoModelForCausalLM, AutoTokenizer
 import torch
 import sys
@@ -11,34 +12,46 @@ import psutil
 print(sys.executable)  # Should show the path within the 'venv' directory
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
+# Flask app initialization
+app = Flask(__name__)
+
+# Enable CORS for all routes
+CORS(app)  # This will allow all domains to access your API
+
+# Set device (CUDA for GPU, otherwise CPU)
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
 # Get the process memory usage for initial debugging
 process = psutil.Process(os.getpid())
 print(f"Initial memory usage: {process.memory_info().rss / 1024 ** 2:.2f} MB")
 
-# Load model and tokenizer
-tokenizer = AutoTokenizer.from_pretrained("microsoft/DialoGPT-small")
-model = AutoModelForCausalLM.from_pretrained("microsoft/DialoGPT-small")
+# Function to check memory usage
+@app.route("/memory")
+def check_memory():
+    process = psutil.Process(os.getpid())
+    memory_usage = process.memory_info().rss / 1024 ** 2  # Convert to MB
+    return jsonify({"memory_usage_mb": memory_usage})
 
-# Set the device (CUDA for GPU, otherwise CPU)
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-model.to(device)
+# Function to load model and tokenizer
+def load_model():
+    global model, tokenizer
+    tokenizer = AutoTokenizer.from_pretrained("microsoft/DialoGPT-small")
+    model = AutoModelForCausalLM.from_pretrained("microsoft/DialoGPT-small")
+    model.to(device)
 
-# Use mixed precision if available (float16 for reduced memory usage)
-if device.type == 'cuda':
-    model.half()
-else:
-    # Apply quantization for CPU deployment to reduce memory
-    model = torch.quantization.quantize_dynamic(model, {torch.nn.Linear}, dtype=torch.qint8)
+    # Use mixed precision if available (float16 for reduced memory usage on GPU)
+    if device.type == 'cuda':
+        model.half()
+    else:
+        # Apply quantization for CPU deployment to reduce memory
+        model = torch.quantization.quantize_dynamic(model, {torch.nn.Linear}, dtype=torch.qint8)
 
-# Flask setup
-app = Flask(__name__)
-
-# Function to load data from JSON files
+# Load predefined responses from JSON files
 def load_json_data(file_path):
     with open(file_path, "r") as file:
         return json.load(file)
 
-# Load predefined responses from JSON files
+# Load predefined responses
 fatherhood_responses = load_json_data("fatherhood_responses.json")
 conversation = load_json_data("conversation.json")
 
@@ -46,6 +59,10 @@ conversation = load_json_data("conversation.json")
 def clear_memory():
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
+
+@app.before_first_request
+def setup():
+    load_model()
 
 @app.route("/")
 def index():

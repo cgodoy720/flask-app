@@ -1,4 +1,5 @@
 Flask
+flask-cors
 transformers
 python-dotenv
 pandas
