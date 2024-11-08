@@ -116,11 +116,3 @@ def get_chat_response(text):
 
         clear_memory()
         return response
-
-if __name__ == "__main__":
-    # Load the model before starting the app
-    load_model()
-
-    # Get the port from environment variable or default to 5000
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
