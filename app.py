@@ -7,7 +7,6 @@ import os
 import json
 import psutil
 
-
 # Check Python version
 print(sys.executable)  # Should show the path within the 'venv' directory
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
@@ -15,15 +14,17 @@ os.environ["TOKENIZERS_PARALLELISM"] = "false"
 process = psutil.Process(os.getpid())
 print(f"Memory usage: {process.memory_info().rss / 1024 ** 2} MB")
 
-
-
 # Load model and tokenizer
-tokenizer = AutoTokenizer.from_pretrained("microsoft/DialoGPT-medium")
-model = AutoModelForCausalLM.from_pretrained("microsoft/DialoGPT-medium")
+tokenizer = AutoTokenizer.from_pretrained("microsoft/DialoGPT-small")  # Changed to smaller model
+model = AutoModelForCausalLM.from_pretrained("microsoft/DialoGPT-small")  # Changed to smaller model
 
 # Set the device (CUDA for GPU, otherwise CPU)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model.to(device)
+
+# Use mixed precision if available (half-precision for reduced memory usage)
+if device.type == 'cuda':
+    model.half()  # Using float16 precision
 
 # Flask setup
 app = Flask(__name__)
@@ -85,7 +86,7 @@ def get_chat_response(text):
     
     # Generate response using model
     try:
-        chat_history_ids = model.generate(new_user_input_ids, max_length=150, pad_token_id=tokenizer.eos_token_id)
+        chat_history_ids = model.generate(new_user_input_ids, max_length=100, pad_token_id=tokenizer.eos_token_id)  # Reduced max_length
         response = tokenizer.decode(chat_history_ids[:, new_user_input_ids.shape[-1]:][0], skip_special_tokens=True)
     except Exception as e:
         print(f"Error during model generation: {e}")
