@@ -7,24 +7,28 @@ import os
 import json
 import psutil
 
-# Check Python version
+# Check Python version and set environment variables
 print(sys.executable)  # Should show the path within the 'venv' directory
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
-# Get the process memory usage
+
+# Get the process memory usage for initial debugging
 process = psutil.Process(os.getpid())
-print(f"Memory usage: {process.memory_info().rss / 1024 ** 2} MB")
+print(f"Initial memory usage: {process.memory_info().rss / 1024 ** 2:.2f} MB")
 
 # Load model and tokenizer
-tokenizer = AutoTokenizer.from_pretrained("microsoft/DialoGPT-small")  # Changed to smaller model
-model = AutoModelForCausalLM.from_pretrained("microsoft/DialoGPT-small")  # Changed to smaller model
+tokenizer = AutoTokenizer.from_pretrained("microsoft/DialoGPT-small")
+model = AutoModelForCausalLM.from_pretrained("microsoft/DialoGPT-small")
 
 # Set the device (CUDA for GPU, otherwise CPU)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model.to(device)
 
-# Use mixed precision if available (half-precision for reduced memory usage)
+# Use mixed precision if available (float16 for reduced memory usage)
 if device.type == 'cuda':
-    model.half()  # Using float16 precision
+    model.half()
+else:
+    # Apply quantization for CPU deployment to reduce memory
+    model = torch.quantization.quantize_dynamic(model, {torch.nn.Linear}, dtype=torch.qint8)
 
 # Flask setup
 app = Flask(__name__)
@@ -34,11 +38,11 @@ def load_json_data(file_path):
     with open(file_path, "r") as file:
         return json.load(file)
 
-# Load fatherhood responses and predefined conversations from files
+# Load predefined responses from JSON files
 fatherhood_responses = load_json_data("fatherhood_responses.json")
 conversation = load_json_data("conversation.json")
 
-# Clear GPU memory
+# Clear GPU memory function
 def clear_memory():
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
@@ -49,56 +53,44 @@ def index():
 
 @app.route("/get", methods=["POST"])
 def chat():
-    data = request.get_json()  
-    msg = data.get("msg")  
+    data = request.get_json()
+    msg = data.get("msg")
 
     if not msg:
         return jsonify({"error": "No 'msg' field provided in the request."}), 400
 
-    # Print the incoming message for debugging
-    print(f"Received message: {msg}")
-    
+    print(f"Received message: {msg}")  # For debugging
     token_count = len(tokenizer.encode(msg))
 
-    # Get the appropriate response based on the input message
     response = get_chat_response(msg)
     return jsonify({"response": response, "token_count": token_count, "msg": msg}), 200
 
 def get_chat_response(text):
-    # Check if the input matches a predefined conversation entry
+    # Check for predefined responses
     if text in conversation:
         return conversation[text]
 
-    # Check if the input matches any fatherhood-related keywords
-    matched_keywords = [
-        keyword for keyword in fatherhood_responses.keys() if keyword in text.lower()
-    ]
-
-    # If there are matched keywords, randomly select one
+    # Check for keywords in fatherhood responses
+    matched_keywords = [keyword for keyword in fatherhood_responses.keys() if keyword in text.lower()]
     if matched_keywords:
         selected_keyword = random.choice(matched_keywords)
-        selected_response = random.choice(fatherhood_responses[selected_keyword])
-        return selected_response
-    
-    # If no keyword matches, use the AI model to generate a response
-    new_user_input_ids = tokenizer.encode(text + tokenizer.eos_token, return_tensors='pt')
-    new_user_input_ids = new_user_input_ids.to(device)
-    
-    # Generate response using model
-    try:
-        chat_history_ids = model.generate(new_user_input_ids, max_length=100, pad_token_id=tokenizer.eos_token_id)  # Reduced max_length
-        response = tokenizer.decode(chat_history_ids[:, new_user_input_ids.shape[-1]:][0], skip_special_tokens=True)
-    except Exception as e:
-        print(f"Error during model generation: {e}")
-        response = "Sorry, something went wrong."
-    
-    # Clear memory after the generation
-    clear_memory()
+        return random.choice(fatherhood_responses[selected_keyword])
 
-    return response
+    # Generate response using the model
+    with torch.no_grad():  # Ensure no gradient calculation
+        input_ids = tokenizer.encode(text + tokenizer.eos_token, return_tensors='pt').to(device)
 
+        try:
+            response_ids = model.generate(input_ids, max_length=100, pad_token_id=tokenizer.eos_token_id)
+            response = tokenizer.decode(response_ids[:, input_ids.shape[-1]:][0], skip_special_tokens=True)
+        except Exception as e:
+            print(f"Error during model generation: {e}")
+            response = "Sorry, something went wrong."
+
+        clear_memory()
+        return response
 
 if __name__ == "__main__":
-    # Get the port from the environment variable or default to 5000
+    # Get the port from environment variable or default to 5000
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
