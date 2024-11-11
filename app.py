@@ -7,20 +7,6 @@ import random
 import os
 import json
 import psutil
-import gunicorn  # For production WSGI server
-# Render deployment configuration
-port = int(os.environ.get("PORT", 5000))
-host = "0.0.0.0"  # Required for Render deployment
-
-# Gunicorn configuration
-workers = int(os.environ.get("WEB_CONCURRENCY", 4))
-threads = int(os.environ.get("PYTHON_MAX_THREADS", 1))
-
-if __name__ == "__main__":
-    # Load the model when the app starts
-    load_model()
-    # Run the Flask app
-    app.run(host=host, port=port)
 
 # Check Python version and set environment variables
 print(sys.executable)  # Should show the path within the 'venv' directory
@@ -116,3 +102,11 @@ def get_chat_response(text):
 
         clear_memory()
         return response
+
+if __name__ == "__main__":
+    # Load the model before starting the app
+    load_model()
+
+    # Get the port from environment variable or default to 5000
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
